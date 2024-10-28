@@ -7,7 +7,6 @@ A Swift library that monitors the iCloud account status and responds to synchron
 - **Account Status Monitoring**: Check if the iCloud account is available and handle unavailable states.
 - **Synchronization Event Handling**: Monitor importing, exporting, setup, and idle states during data synchronization.
 - **Error Handling**: Handle specific CloudKit errors, such as `quotaExceeded`.
-- **Compatibility**: Uses the Observation framework on iOS 17 and above; compatible with `ObservableObject` on older versions.
 - **Logging Support**: Optional logging of synchronization events for debugging purposes.
 
 ## Usage
@@ -20,18 +19,8 @@ import SyncStatusManager
 
 ### Initialize SyncStatusManager
 
-You can initialize `SyncStatusManager` using either `@StateObject` or `@State`, depending on your needs. Even on iOS 17 and above, using `@StateObject` does not affect the Observation features.
-
-#### Using @StateObject
-
 ```swift
 @StateObject var syncManager = SyncStatusManager()
-```
-
-#### Using @State (iOS 17 and above)
-
-```swift
-@State var syncManager = SyncStatusManager()
 ```
 
 ### Observing Sync Events
@@ -108,6 +97,7 @@ let syncManager = SyncStatusManager(
     showEventInLog: true
 )
 ```
+
 
 
 
