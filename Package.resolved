@@ -1,0 +1,15 @@
+{
+  "originHash" : "7483b3052b36951d7127157cd915889a7797c15bac6677e7acce9d1f3634e399",
+  "pins" : [
+    {
+      "identity" : "simplelogger",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/fatbobman/SimpleLogger.git",
+      "state" : {
+        "revision" : "475edf2a208f9840cd37a7db7b0c894164954e75",
+        "version" : "0.1.2"
+      }
+    }
+  ],
+  "version" : 3
+}
