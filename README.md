@@ -38,7 +38,7 @@ Or add it via Xcode:
 ### Import the Library
 
 ```swift
-import SyncStatusManager
+import iCloudSyncStatusKit
 ```
 
 ### Initialize SyncStatusManager
