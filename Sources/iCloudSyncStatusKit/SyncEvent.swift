@@ -10,7 +10,7 @@
 //  Copyright © 2024-present Fatbobman. All rights reserved.
 
 /// Defines different event states during the synchronization process
-public enum SyncEvent {
+public enum SyncEvent: Sendable {
     /// Represents the process of importing data from the cloud to the local device
     case importing
     /// Represents the process of sending data from the local device to the cloud

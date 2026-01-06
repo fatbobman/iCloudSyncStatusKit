@@ -12,7 +12,7 @@
 import CloudKit
 
 /// Account status enumeration
-public enum AccountStatus {
+public enum AccountStatus: Sendable {
     /// Account status is normal
     case available
     /// Abnormal (states other than available)
