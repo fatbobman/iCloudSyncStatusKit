@@ -9,6 +9,9 @@
 //  ------------------------------------------------
 //  Copyright © 2024-present Fatbobman. All rights reserved.
 
+// This file requires Swift 6.2+ for isolated deinit support
+#if swift(>=6.2)
+
 import CloudKit
 import CoreData
 import Foundation
@@ -61,7 +64,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
         SyncEnvironmentStatus(
             network: networkStatus,
             account: accountStatus,
-            syncEvent: syncEvent
+            syncEvent: syncEvent,
         )
     }
 
@@ -82,9 +85,9 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
     public var isSyncing: Bool {
         switch syncEvent {
         case .importing, .exporting, .setup:
-            return true
+            true
         case .idle:
-            return false
+            false
         }
     }
 
@@ -137,7 +140,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
         enableSyncEventMonitoring: Bool = true,
         quotaExceededHandler: (@Sendable () async -> Void)? = nil,
         logger: (any LoggerManagerProtocol)? = nil,
-        showEventInLog: Bool = false
+        showEventInLog: Bool = false,
     ) {
         container = cloudKitContainerID.map { CKContainer(identifier: $0) } ?? .default()
         self.enableSyncEventMonitoring = enableSyncEventMonitoring
@@ -155,7 +158,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
         quotaExceededHandler: (@Sendable () async -> Void)?,
         logger: (any LoggerManagerProtocol)?,
         showEventInLog: Bool,
-        _skipMonitoring: Bool
+        _skipMonitoring: Bool,
     ) {
         // Use nil container for testing to avoid CloudKit initialization
         container = nil
@@ -191,13 +194,12 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
         }
 
         // Start sync event monitoring if enabled
-        let syncTask: Task<Void, Never>?
-        if enableSyncEventMonitoring {
-            syncTask = Task { @MainActor [weak self] in
+        let syncTask: Task<Void, Never>? = if enableSyncEventMonitoring {
+            Task { @MainActor [weak self] in
                 await self?.monitorSyncEvents()
             }
         } else {
-            syncTask = nil
+            nil
         }
 
         // Combine tasks for cleanup
@@ -324,7 +326,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
                 }
 
                 // Yield initial status
-                continuation.yield(self.environmentStatus)
+                continuation.yield(environmentStatus)
 
                 // Use withObservationTracking to detect changes
                 while !Task.isCancelled {
@@ -361,8 +363,8 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
                 guard let self else { return }
                 let isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
                 let status = NetworkStatus(from: path, isLowPowerModeEnabled: isLowPowerMode)
-                self.networkStatus = status
-                self.networkContinuation?.yield(status)
+                networkStatus = status
+                networkContinuation?.yield(status)
             }
         }
 
@@ -372,14 +374,14 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
         NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange,
             object: nil,
-            queue: .main
+            queue: .main,
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, let monitor = self.pathMonitor else { return }
+                guard let self, let monitor = pathMonitor else { return }
                 let isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
                 let status = NetworkStatus(from: monitor.currentPath, isLowPowerModeEnabled: isLowPowerMode)
-                self.networkStatus = status
-                self.networkContinuation?.yield(status)
+                networkStatus = status
+                networkContinuation?.yield(status)
             }
         }
     }
@@ -412,7 +414,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
     /// Monitors NSPersistentCloudKitContainer sync events
     private func monitorSyncEvents() async {
         let notifications = NotificationCenter.default.notifications(
-            named: NSPersistentCloudKitContainer.eventChangedNotification
+            named: NSPersistentCloudKitContainer.eventChangedNotification,
         )
 
         for await notification in notifications {
@@ -423,7 +425,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
     /// Handles sync event notification
     private func handleSyncEventNotification(_ notification: Notification) {
         guard let event = notification.userInfo?[
-            NSPersistentCloudKitContainer.eventNotificationUserInfoKey
+            NSPersistentCloudKitContainer.eventNotificationUserInfoKey,
         ] as? NSPersistentCloudKitContainer.Event else {
             syncEvent = .idle
             syncEventContinuation?.yield(.idle)
@@ -432,16 +434,15 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
 
         let isFinished = event.endDate != nil
 
-        let newEvent: SyncEvent
-        switch event.type {
+        let newEvent: SyncEvent = switch event.type {
         case .import:
-            newEvent = isFinished ? .idle : .importing
+            isFinished ? .idle : .importing
         case .export:
-            newEvent = isFinished ? .idle : .exporting
+            isFinished ? .idle : .exporting
         case .setup:
-            newEvent = .setup
+            .setup
         @unknown default:
-            newEvent = .idle
+            .idle
         }
 
         syncEvent = newEvent
@@ -496,7 +497,7 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
                 quotaExceededHandler: nil,
                 logger: nil,
                 showEventInLog: false,
-                _skipMonitoring: true
+                _skipMonitoring: true,
             )
         }
 
@@ -536,3 +537,4 @@ public final class SyncStatusAsyncManager: @unchecked Sendable {
     }
 #endif
 
+#endif // swift(>=6.2)

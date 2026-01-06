@@ -1,12 +1,12 @@
-import Testing
 @testable import iCloudSyncStatusKit
+import Testing
 
 // MARK: - NetworkStatus Tests
 
 @Suite("NetworkStatus Tests")
 struct NetworkStatusTests {
     @Test("NetworkStatus default disconnected state")
-    func testDisconnectedDefault() {
+    func disconnectedDefault() {
         let status = NetworkStatus.disconnected
 
         #expect(status.isConnected == false)
@@ -17,7 +17,7 @@ struct NetworkStatusTests {
     }
 
     @Test("NetworkStatus connected with WiFi")
-    func testConnectedWiFi() {
+    func connectedWiFi() {
         let status = NetworkStatus(
             isConnected: true,
             connectivity: .connected(.wifi),
@@ -31,7 +31,7 @@ struct NetworkStatusTests {
     }
 
     @Test("NetworkStatus connected with cellular is expensive")
-    func testConnectedCellular() {
+    func connectedCellular() {
         let status = NetworkStatus(
             isConnected: true,
             connectivity: .connected(.cellular),
@@ -45,7 +45,7 @@ struct NetworkStatusTests {
     }
 
     @Test("NetworkStatus equality")
-    func testEquality() {
+    func equality() {
         let status1 = NetworkStatus(
             isConnected: true,
             connectivity: .connected(.wifi),
@@ -71,7 +71,7 @@ struct NetworkStatusTests {
 @Suite("AccountStatus Tests")
 struct AccountStatusTests {
     @Test("AccountStatus available equality")
-    func testAvailableEquality() {
+    func availableEquality() {
         let status1 = AccountStatus.available
         let status2 = AccountStatus.available
 
@@ -79,7 +79,7 @@ struct AccountStatusTests {
     }
 
     @Test("AccountStatus notAvailable equality")
-    func testNotAvailableEquality() {
+    func notAvailableEquality() {
         let status1 = AccountStatus.notAvailable(.noAccount)
         let status2 = AccountStatus.notAvailable(.noAccount)
 
@@ -87,7 +87,7 @@ struct AccountStatusTests {
     }
 
     @Test("AccountStatus different states not equal")
-    func testDifferentStatesNotEqual() {
+    func differentStatesNotEqual() {
         let available = AccountStatus.available
         let notAvailable = AccountStatus.notAvailable(.noAccount)
 
@@ -116,10 +116,11 @@ struct SyncEventTests {
 
 // MARK: - SyncEnvironmentStatus Tests
 
+#if swift(>=6.2)
 @Suite("SyncEnvironmentStatus Tests")
 struct SyncEnvironmentStatusTests {
     @Test("isSyncReady when all conditions met")
-    func testIsSyncReadyTrue() {
+    func isSyncReadyTrue() {
         let status = SyncEnvironmentStatus(
             network: NetworkStatus(
                 isConnected: true,
@@ -136,7 +137,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncReady false when network disconnected")
-    func testIsSyncReadyFalseNoNetwork() {
+    func isSyncReadyFalseNoNetwork() {
         let status = SyncEnvironmentStatus(
             network: .disconnected,
             account: .available,
@@ -147,7 +148,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncReady false when account unavailable")
-    func testIsSyncReadyFalseNoAccount() {
+    func isSyncReadyFalseNoAccount() {
         let status = SyncEnvironmentStatus(
             network: NetworkStatus(
                 isConnected: true,
@@ -164,7 +165,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncReady false when low power mode enabled")
-    func testIsSyncReadyFalseLowPowerMode() {
+    func isSyncReadyFalseLowPowerMode() {
         let status = SyncEnvironmentStatus(
             network: NetworkStatus(
                 isConnected: true,
@@ -181,7 +182,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncing when importing")
-    func testIsSyncingImporting() {
+    func isSyncingImporting() {
         let status = SyncEnvironmentStatus(
             network: .disconnected,
             account: .available,
@@ -192,7 +193,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncing when exporting")
-    func testIsSyncingExporting() {
+    func isSyncingExporting() {
         let status = SyncEnvironmentStatus(
             network: .disconnected,
             account: .available,
@@ -203,7 +204,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSyncing false when idle")
-    func testIsSyncingFalseWhenIdle() {
+    func isSyncingFalseWhenIdle() {
         let status = SyncEnvironmentStatus(
             network: .disconnected,
             account: .available,
@@ -231,7 +232,7 @@ struct SyncEnvironmentStatusTests {
     }
 
     @Test("isSuitableForLargeTransfer false when expensive")
-    func testIsSuitableForLargeTransferFalseWhenExpensive() {
+    func isSuitableForLargeTransferFalseWhenExpensive() {
         let status = SyncEnvironmentStatus(
             network: NetworkStatus(
                 isConnected: true,
@@ -247,144 +248,145 @@ struct SyncEnvironmentStatusTests {
         #expect(status.isSuitableForLargeTransfer == false)
     }
 }
+#endif // swift(>=6.2)
 
 // MARK: - SyncStatusAsyncManager Tests
 
-#if DEBUG
-@Suite("SyncStatusAsyncManager Tests")
-@MainActor
-struct SyncStatusAsyncManagerTests {
-    @Test("Initial state")
-    func testInitialState() async {
-        let manager = SyncStatusAsyncManager._forTesting()
+#if swift(>=6.2) && DEBUG
+    @Suite("SyncStatusAsyncManager Tests")
+    @MainActor
+    struct SyncStatusAsyncManagerTests {
+        @Test("Initial state")
+        func initialState() async {
+            let manager = SyncStatusAsyncManager._forTesting()
 
-        // Account status starts as notAvailable until checked
-        #expect(manager.isAccountAvailable == false)
-        #expect(manager.syncEvent == .idle)
-        #expect(manager.isSyncing == false)
-        #expect(manager.networkStatus == .disconnected)
+            // Account status starts as notAvailable until checked
+            #expect(manager.isAccountAvailable == false)
+            #expect(manager.syncEvent == .idle)
+            #expect(manager.isSyncing == false)
+            #expect(manager.networkStatus == .disconnected)
+        }
+
+        @Test("Test set network status")
+        func setNetworkStatus() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            let connectedStatus = NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            )
+
+            manager._testSetNetworkStatus(connectedStatus)
+
+            #expect(manager.networkStatus == connectedStatus)
+            #expect(manager.isNetworkConnected == true)
+        }
+
+        @Test("Test set account status")
+        func setAccountStatus() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetAccountStatus(.available)
+
+            #expect(manager.accountStatus == .available)
+            #expect(manager.isAccountAvailable == true)
+        }
+
+        @Test("Test set sync event")
+        func setSyncEvent() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetSyncEvent(.importing)
+
+            #expect(manager.syncEvent == .importing)
+            #expect(manager.isSyncing == true)
+
+            manager._testSetSyncEvent(.idle)
+
+            #expect(manager.syncEvent == .idle)
+            #expect(manager.isSyncing == false)
+        }
+
+        @Test("Environment status composition")
+        func testEnvironmentStatus() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            let connectedStatus = NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            )
+
+            manager._testSetNetworkStatus(connectedStatus)
+            manager._testSetAccountStatus(.available)
+            manager._testSetSyncEvent(.idle)
+
+            let envStatus = manager.environmentStatus
+
+            #expect(envStatus.isSyncReady == true)
+            #expect(envStatus.isSyncing == false)
+            #expect(envStatus.isSuitableForLargeTransfer == true)
+        }
+
+        @Test("Environment status not ready when network disconnected")
+        func environmentStatusNotReadyNoNetwork() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetAccountStatus(.available)
+            manager._testSetSyncEvent(.idle)
+            // networkStatus is .disconnected by default
+
+            let envStatus = manager.environmentStatus
+
+            #expect(envStatus.isSyncReady == false)
+        }
+
+        @Test("Environment status not ready when account unavailable")
+        func environmentStatusNotReadyNoAccount() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetNetworkStatus(NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            ))
+            manager._testSetAccountStatus(.notAvailable(.noAccount))
+
+            let envStatus = manager.environmentStatus
+
+            #expect(envStatus.isSyncReady == false)
+        }
+
+        @Test("Convenience properties")
+        func convenienceProperties() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            // Initial state
+            #expect(manager.isNetworkConnected == false)
+            #expect(manager.isAccountAvailable == false)
+            #expect(manager.isSyncing == false)
+
+            // Set to connected/available/syncing
+            manager._testSetNetworkStatus(NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            ))
+            manager._testSetAccountStatus(.available)
+            manager._testSetSyncEvent(.exporting)
+
+            #expect(manager.isNetworkConnected == true)
+            #expect(manager.isAccountAvailable == true)
+            #expect(manager.isSyncing == true)
+        }
     }
-
-    @Test("Test set network status")
-    func testSetNetworkStatus() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        let connectedStatus = NetworkStatus(
-            isConnected: true,
-            connectivity: .connected(.wifi),
-            isLowPowerModeEnabled: false,
-            isConstrained: false,
-            isExpensive: false,
-        )
-
-        manager._testSetNetworkStatus(connectedStatus)
-
-        #expect(manager.networkStatus == connectedStatus)
-        #expect(manager.isNetworkConnected == true)
-    }
-
-    @Test("Test set account status")
-    func testSetAccountStatus() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        manager._testSetAccountStatus(.available)
-
-        #expect(manager.accountStatus == .available)
-        #expect(manager.isAccountAvailable == true)
-    }
-
-    @Test("Test set sync event")
-    func testSetSyncEvent() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        manager._testSetSyncEvent(.importing)
-
-        #expect(manager.syncEvent == .importing)
-        #expect(manager.isSyncing == true)
-
-        manager._testSetSyncEvent(.idle)
-
-        #expect(manager.syncEvent == .idle)
-        #expect(manager.isSyncing == false)
-    }
-
-    @Test("Environment status composition")
-    func testEnvironmentStatus() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        let connectedStatus = NetworkStatus(
-            isConnected: true,
-            connectivity: .connected(.wifi),
-            isLowPowerModeEnabled: false,
-            isConstrained: false,
-            isExpensive: false,
-        )
-
-        manager._testSetNetworkStatus(connectedStatus)
-        manager._testSetAccountStatus(.available)
-        manager._testSetSyncEvent(.idle)
-
-        let envStatus = manager.environmentStatus
-
-        #expect(envStatus.isSyncReady == true)
-        #expect(envStatus.isSyncing == false)
-        #expect(envStatus.isSuitableForLargeTransfer == true)
-    }
-
-    @Test("Environment status not ready when network disconnected")
-    func testEnvironmentStatusNotReadyNoNetwork() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        manager._testSetAccountStatus(.available)
-        manager._testSetSyncEvent(.idle)
-        // networkStatus is .disconnected by default
-
-        let envStatus = manager.environmentStatus
-
-        #expect(envStatus.isSyncReady == false)
-    }
-
-    @Test("Environment status not ready when account unavailable")
-    func testEnvironmentStatusNotReadyNoAccount() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        manager._testSetNetworkStatus(NetworkStatus(
-            isConnected: true,
-            connectivity: .connected(.wifi),
-            isLowPowerModeEnabled: false,
-            isConstrained: false,
-            isExpensive: false,
-        ))
-        manager._testSetAccountStatus(.notAvailable(.noAccount))
-
-        let envStatus = manager.environmentStatus
-
-        #expect(envStatus.isSyncReady == false)
-    }
-
-    @Test("Convenience properties")
-    func testConvenienceProperties() async {
-        let manager = SyncStatusAsyncManager._forTesting()
-
-        // Initial state
-        #expect(manager.isNetworkConnected == false)
-        #expect(manager.isAccountAvailable == false)
-        #expect(manager.isSyncing == false)
-
-        // Set to connected/available/syncing
-        manager._testSetNetworkStatus(NetworkStatus(
-            isConnected: true,
-            connectivity: .connected(.wifi),
-            isLowPowerModeEnabled: false,
-            isConstrained: false,
-            isExpensive: false,
-        ))
-        manager._testSetAccountStatus(.available)
-        manager._testSetSyncEvent(.exporting)
-
-        #expect(manager.isNetworkConnected == true)
-        #expect(manager.isAccountAvailable == true)
-        #expect(manager.isSyncing == true)
-    }
-}
 #endif
