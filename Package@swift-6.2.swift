@@ -16,11 +16,11 @@ let package = Package(
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "iCloudSyncStatusKit",
-            targets: ["iCloudSyncStatusKit"]
+            targets: ["iCloudSyncStatusKit"],
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/fatbobman/SimpleLogger.git", from: "0.1.0"),
+        .package(url: "https://github.com/fatbobman/SimpleLogger.git", from: "0.8.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -30,13 +30,12 @@ let package = Package(
             dependencies: ["SimpleLogger"],
             swiftSettings: [
                 .enableUpcomingFeature("IsolatedDeinit"),
-            ]
+            ],
         ),
         .testTarget(
             name: "iCloudSyncStatusKitTests",
-            dependencies: ["iCloudSyncStatusKit"]
+            dependencies: ["iCloudSyncStatusKit"],
         ),
     ],
-    swiftLanguageModes: [.v6]
+    swiftLanguageModes: [.v6],
 )
-
