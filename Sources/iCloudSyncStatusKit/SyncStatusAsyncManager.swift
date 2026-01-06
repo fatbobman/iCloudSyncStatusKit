@@ -24,6 +24,7 @@
     /// - Network connectivity status
     /// - iCloud account status
     /// - CloudKit synchronization events
+    /// - iCloud Drive availability
     ///
     /// This class requires iOS 17.0 or later and uses the Observation framework
     /// for reactive state management.
@@ -31,12 +32,22 @@
     /// ## Usage
     ///
     /// ```swift
-    /// @State private var syncManager = SyncStatusAsyncManager()
+    /// // Monitor all status types
+    /// @State private var syncManager = SyncStatusAsyncManager(
+    ///     monitoringOptions: .all,
+    ///     cloudKitContainerID: "iCloud.com.example.app"
+    /// )
+    ///
+    /// // Only monitor network and account (lightweight)
+    /// @State private var syncManager = SyncStatusAsyncManager(
+    ///     monitoringOptions: .basic
+    /// )
     ///
     /// var body: some View {
     ///     VStack {
     ///         Text("Network: \(syncManager.isNetworkConnected ? "Connected" : "Disconnected")")
     ///         Text("Account: \(syncManager.isAccountAvailable ? "Available" : "Unavailable")")
+    ///         Text("iCloud Drive: \(syncManager.isCloudDriveAvailable ? "Available" : "Unavailable")")
     ///
     ///         if syncManager.environmentStatus.isSyncReady {
     ///             Text("✅ Ready to sync")
@@ -59,12 +70,22 @@
         /// Current synchronization event (automatically monitored)
         public private(set) var syncEvent: SyncEvent = .idle
 
+        /// Whether iCloud Drive is available
+        ///
+        /// This checks `FileManager.default.ubiquityIdentityToken` which indicates
+        /// whether iCloud Drive is enabled for the current user.
+        ///
+        /// Note: This is separate from CloudKit sync status. A user may have iCloud
+        /// account available but iCloud Drive disabled.
+        public private(set) var isCloudDriveAvailable: Bool = false
+
         /// Comprehensive environment status combining network, account, and sync state
         public var environmentStatus: SyncEnvironmentStatus {
             SyncEnvironmentStatus(
                 network: networkStatus,
                 account: accountStatus,
                 syncEvent: syncEvent,
+                isCloudDriveAvailable: isCloudDriveAvailable,
             )
         }
 
@@ -91,6 +112,9 @@
             }
         }
 
+        /// Current monitoring options
+        public let monitoringOptions: MonitoringOptions
+
         // MARK: - Private Properties
 
         /// Network path monitor
@@ -114,36 +138,37 @@
         /// Whether to show events in log
         private let showEventInLog: Bool
 
-        /// Whether sync event monitoring is enabled
-        private let enableSyncEventMonitoring: Bool
-
         /// Monitoring task
         private var monitoringTask: Task<Void, Never>?
+
+        /// Cloud Drive monitoring task
+        private var cloudDriveTask: Task<Void, Never>?
 
         /// Stream continuations for cleanup
         private var networkContinuation: AsyncStream<NetworkStatus>.Continuation?
         private var accountContinuation: AsyncStream<AccountStatus>.Continuation?
         private var syncEventContinuation: AsyncStream<SyncEvent>.Continuation?
+        private var cloudDriveContinuation: AsyncStream<Bool>.Continuation?
 
         // MARK: - Initialization
 
         /// Creates a new SyncStatusAsyncManager instance
         ///
         /// - Parameters:
-        ///   - cloudKitContainerID: CloudKit container identifier. Uses default container if nil.
-        ///   - enableSyncEventMonitoring: Whether to monitor NSPersistentCloudKitContainer events. Default is true.
+        ///   - monitoringOptions: Options controlling which status types to monitor. Default is `.default`.
+        ///   - cloudKitContainerID: CloudKit container identifier. Required if `.syncEvent` is in options.
         ///   - quotaExceededHandler: Callback when iCloud storage quota is exceeded.
         ///   - logger: Logger conforming to LoggerManagerProtocol for debugging.
         ///   - showEventInLog: Whether to log sync events for debugging. Default is false.
         public init(
+            monitoringOptions: MonitoringOptions = .default,
             cloudKitContainerID: String? = nil,
-            enableSyncEventMonitoring: Bool = true,
             quotaExceededHandler: (@Sendable () async -> Void)? = nil,
             logger: (any LoggerManagerProtocol)? = nil,
             showEventInLog: Bool = false,
         ) {
+            self.monitoringOptions = monitoringOptions
             container = cloudKitContainerID.map { CKContainer(identifier: $0) } ?? .default()
-            self.enableSyncEventMonitoring = enableSyncEventMonitoring
             self.quotaExceededHandler = quotaExceededHandler
             self.logger = logger
             self.showEventInLog = showEventInLog
@@ -153,16 +178,16 @@
 
         /// Internal initializer with option to skip monitoring (for testing)
         init(
+            monitoringOptions: MonitoringOptions,
             cloudKitContainerID: String?,
-            enableSyncEventMonitoring: Bool,
             quotaExceededHandler: (@Sendable () async -> Void)?,
             logger: (any LoggerManagerProtocol)?,
             showEventInLog: Bool,
             _skipMonitoring: Bool,
         ) {
+            self.monitoringOptions = monitoringOptions
             // Use nil container for testing to avoid CloudKit initialization
             container = nil
-            self.enableSyncEventMonitoring = enableSyncEventMonitoring
             self.quotaExceededHandler = quotaExceededHandler
             self.logger = logger
             self.showEventInLog = showEventInLog
@@ -178,35 +203,48 @@
 
         // MARK: - Public Methods
 
-        /// Starts monitoring network, account, and sync status
+        /// Starts monitoring based on configured `monitoringOptions`
         ///
         /// This is called automatically during initialization.
         /// Call this method to restart monitoring after calling `stopMonitoring()`.
         public func startMonitoring() {
             stopMonitoring()
 
-            // Start network monitoring
-            startNetworkMonitoring()
+            // Start network monitoring if enabled
+            if monitoringOptions.contains(.network) {
+                startNetworkMonitoring()
+            }
 
-            // Start account monitoring
-            let accountTask = Task { @MainActor [weak self] in
-                await self?.monitorAccountStatus()
+            // Start account monitoring if enabled
+            var accountTask: Task<Void, Never>?
+            if monitoringOptions.contains(.account) {
+                accountTask = Task { @MainActor [weak self] in
+                    await self?.monitorAccountStatus()
+                }
             }
 
             // Start sync event monitoring if enabled
-            let syncTask: Task<Void, Never>? = if enableSyncEventMonitoring {
-                Task { @MainActor [weak self] in
+            var syncTask: Task<Void, Never>?
+            if monitoringOptions.contains(.syncEvent) {
+                syncTask = Task { @MainActor [weak self] in
                     await self?.monitorSyncEvents()
                 }
-            } else {
-                nil
+            }
+
+            // Start iCloud Drive monitoring if enabled
+            if monitoringOptions.contains(.cloudDrive) {
+                startCloudDriveMonitoring()
             }
 
             // Combine tasks for cleanup
-            monitoringTask = Task { @MainActor in
-                _ = await accountTask.result
-                if let syncTask {
-                    _ = await syncTask.result
+            if accountTask != nil || syncTask != nil {
+                monitoringTask = Task { @MainActor in
+                    if let accountTask {
+                        _ = await accountTask.result
+                    }
+                    if let syncTask {
+                        _ = await syncTask.result
+                    }
                 }
             }
         }
@@ -219,10 +257,13 @@
             pathMonitor = nil
             monitoringTask?.cancel()
             monitoringTask = nil
+            cloudDriveTask?.cancel()
+            cloudDriveTask = nil
 
             networkContinuation?.finish()
             accountContinuation?.finish()
             syncEventContinuation?.finish()
+            cloudDriveContinuation?.finish()
         }
 
         /// Checks the current iCloud account status
@@ -246,6 +287,18 @@
         /// - Returns: Current network status
         public func checkNetworkStatus() -> NetworkStatus {
             networkStatus
+        }
+
+        /// Manually refreshes iCloud Drive availability status
+        ///
+        /// This checks `FileManager.default.ubiquityIdentityToken` which reflects
+        /// the system-level iCloud Drive setting, independent of app-specific
+        /// iCloud backup settings.
+        ///
+        /// Note: This is separate from `accountStatus`. iCloud Drive can be available
+        /// even when the app's iCloud backup is disabled.
+        public func refreshCloudDriveStatus() {
+            updateCloudDriveStatus()
         }
 
         /// Waits until the environment is ready for sync operations
@@ -316,6 +369,20 @@
             }
         }
 
+        /// Stream of iCloud Drive availability changes
+        public var cloudDriveStatusStream: AsyncStream<Bool> {
+            AsyncStream { continuation in
+                cloudDriveContinuation = continuation
+                continuation.yield(isCloudDriveAvailable)
+
+                continuation.onTermination = { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.cloudDriveContinuation = nil
+                    }
+                }
+            }
+        }
+
         /// Stream of comprehensive environment status changes
         public var environmentStatusStream: AsyncStream<SyncEnvironmentStatus> {
             AsyncStream { continuation in
@@ -335,6 +402,7 @@
                                 _ = self.networkStatus
                                 _ = self.accountStatus
                                 _ = self.syncEvent
+                                _ = self.isCloudDriveAvailable
                             } onChange: {
                                 Task { @MainActor in
                                     innerContinuation.resume(returning: self.environmentStatus)
@@ -399,6 +467,33 @@
             }
         }
 
+        /// Starts iCloud Drive availability monitoring
+        private func startCloudDriveMonitoring() {
+            // Check initial status
+            updateCloudDriveStatus()
+
+            // Monitor identity changes (indicates iCloud Drive status change)
+            cloudDriveTask = Task { @MainActor [weak self] in
+                let notifications = NotificationCenter.default.notifications(
+                    named: .NSUbiquityIdentityDidChange,
+                )
+
+                for await _ in notifications {
+                    guard let self else { return }
+                    updateCloudDriveStatus()
+                }
+            }
+        }
+
+        /// Updates the iCloud Drive availability status
+        private func updateCloudDriveStatus() {
+            let available = FileManager.default.ubiquityIdentityToken != nil
+            if isCloudDriveAvailable != available {
+                isCloudDriveAvailable = available
+                cloudDriveContinuation?.yield(available)
+            }
+        }
+
         /// Monitors iCloud account status changes
         private func monitorAccountStatus() async {
             // Check initial status asynchronously - no waiting, just fire and forget
@@ -406,9 +501,14 @@
                 guard let self else { return }
                 do {
                     let status = try await checkAccountStatus()
-                    accountStatus = status
-                    accountContinuation?.yield(status)
+                    // Only update if status actually changed
+                    if accountStatus != status {
+                        accountStatus = status
+                        accountContinuation?.yield(status)
+                    }
                 } catch {
+                    // On error, don't update status - keep default .notAvailable(.couldNotDetermine)
+                    // This prevents account status from being incorrectly marked unavailable
                     logger?.error("Failed to check initial account status: \(error)")
                 }
             }
@@ -419,9 +519,15 @@
             for await _ in notifications {
                 do {
                     let status = try await checkAccountStatus()
-                    accountStatus = status
-                    accountContinuation?.yield(status)
+                    // Only update if status actually changed
+                    // This prevents false negatives when iCloud Drive settings change
+                    if accountStatus != status {
+                        accountStatus = status
+                        accountContinuation?.yield(status)
+                    }
                 } catch {
+                    // On error, don't update status - keep previous value
+                    // This prevents account status from being incorrectly marked unavailable
                     logger?.error("Failed to check account status: \(error)")
                 }
             }
@@ -508,8 +614,8 @@
             /// Internal initializer for testing that skips CloudKit initialization
             private convenience init(_forTesting: Bool) {
                 self.init(
+                    monitoringOptions: .all,
                     cloudKitContainerID: nil,
-                    enableSyncEventMonitoring: false,
                     quotaExceededHandler: nil,
                     logger: nil,
                     showEventInLog: false,
@@ -542,6 +648,15 @@
             public func _testSetSyncEvent(_ event: SyncEvent) {
                 syncEvent = event
                 syncEventContinuation?.yield(event)
+            }
+
+            /// Sets iCloud Drive availability for testing purposes
+            ///
+            /// - Parameter available: Whether iCloud Drive is available
+            /// - Note: This method is only available in DEBUG builds
+            public func _testSetCloudDriveAvailable(_ available: Bool) {
+                isCloudDriveAvailable = available
+                cloudDriveContinuation?.yield(available)
             }
 
             /// Resets quota exceeded flag for testing purposes

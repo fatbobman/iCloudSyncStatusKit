@@ -1,12 +1,14 @@
 # iCloudSyncStatusKit
 
-A Swift library that monitors iCloud account status, network connectivity, and synchronization events when using Core Data with CloudKit.
+A Swift library that monitors iCloud account status, network connectivity, iCloud Drive availability, and synchronization events when using Core Data with CloudKit.
 
 ## Features
 
 - **Network Status Monitoring**: Real-time network connectivity detection with interface type (WiFi/Cellular/Ethernet)
 - **Account Status Monitoring**: Check if the iCloud account is available and handle unavailable states
+- **iCloud Drive Detection**: Monitor iCloud Drive availability separately from account status
 - **Synchronization Event Handling**: Monitor importing, exporting, setup, and idle states during data synchronization
+- **Selective Monitoring**: Use `MonitoringOptions` to enable only the features you need
 - **Error Handling**: Handle specific CloudKit errors, such as `quotaExceeded`
 - **Low Data Mode Detection**: Detect constrained and expensive network conditions
 - **Logging Support**: Optional logging of synchronization events for debugging purposes
@@ -26,7 +28,7 @@ Add the package to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fatbobman/iCloudSyncStatusKit.git", from: "0.2.0")
+    .package(url: "https://github.com/fatbobman/iCloudSyncStatusKit.git", from: "1.0.0")
 ]
 ```
 
@@ -53,7 +55,47 @@ import iCloudSyncStatusKit
 ### Initialize SyncStatusAsyncManager
 
 ```swift
+// Full monitoring (default)
 @State private var syncManager = SyncStatusAsyncManager(
+    cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
+)
+
+// Selective monitoring with MonitoringOptions
+@State private var syncManager = SyncStatusAsyncManager(
+    monitoringOptions: [.network, .account, .cloudDrive],
+    cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
+)
+```
+
+### MonitoringOptions
+
+Control which status types to monitor using `MonitoringOptions`:
+
+```swift
+// Individual options
+.network      // Network connectivity via NWPathMonitor
+.account      // iCloud account status
+.syncEvent    // CloudKit sync events (requires cloudKitContainerID)
+.cloudDrive   // iCloud Drive availability
+
+// Preset combinations
+.all          // All options enabled
+.basic        // Network + Account only (lightweight)
+.default      // Network + Account + CloudDrive
+.syncFocused  // Network + Account + SyncEvent
+```
+
+**Usage Example:**
+
+```swift
+// Only monitor network and account (no CloudKit sync events)
+let manager = SyncStatusAsyncManager(
+    monitoringOptions: .basic
+)
+
+// Full monitoring for CloudKit-enabled apps
+let manager = SyncStatusAsyncManager(
+    monitoringOptions: .all,
     cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
 )
 ```
@@ -63,6 +105,7 @@ import iCloudSyncStatusKit
 ```swift
 struct ContentView: View {
     @State private var syncManager = SyncStatusAsyncManager(
+        monitoringOptions: .all,
         cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
     )
 
@@ -78,6 +121,12 @@ struct ContentView: View {
             HStack {
                 Image(systemName: syncManager.isAccountAvailable ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.xmark")
                 Text(syncManager.isAccountAvailable ? "iCloud Available" : "iCloud Unavailable")
+            }
+
+            // iCloud Drive Status
+            HStack {
+                Image(systemName: syncManager.isCloudDriveAvailable ? "icloud.fill" : "icloud.slash")
+                Text(syncManager.isCloudDriveAvailable ? "iCloud Drive On" : "iCloud Drive Off")
             }
 
             // Sync Status
@@ -102,10 +151,30 @@ struct ContentView: View {
 | `networkStatus` | `NetworkStatus` | Detailed network status including interface type |
 | `accountStatus` | `AccountStatus` | iCloud account availability status |
 | `syncEvent` | `SyncEvent` | Current sync event (importing/exporting/setup/idle) |
+| `isCloudDriveAvailable` | `Bool` | Whether iCloud Drive is enabled |
 | `environmentStatus` | `SyncEnvironmentStatus` | Combined status with convenience properties |
 | `isNetworkConnected` | `Bool` | Simple network connectivity check |
 | `isAccountAvailable` | `Bool` | Simple account availability check |
 | `isSyncing` | `Bool` | Whether sync is in progress |
+| `monitoringOptions` | `MonitoringOptions` | Current monitoring configuration |
+
+### iCloud Drive vs iCloud Account
+
+**Important**: iCloud Drive availability is separate from iCloud account status.
+
+```swift
+// User may have iCloud account available but iCloud Drive disabled
+if syncManager.isAccountAvailable && !syncManager.isCloudDriveAvailable {
+    // Account is signed in, but iCloud Drive is turned off in Settings
+    print("Please enable iCloud Drive in Settings")
+}
+```
+
+| Scenario | `isAccountAvailable` | `isCloudDriveAvailable` |
+|----------|---------------------|------------------------|
+| Not signed in | ❌ | ❌ |
+| Signed in, Drive off | ✅ | ❌ |
+| Signed in, Drive on | ✅ | ✅ |
 
 ### NetworkStatus Details
 
@@ -143,9 +212,14 @@ if syncManager.networkStatus.isLowPowerModeEnabled {
 ```swift
 let status = syncManager.environmentStatus
 
-// Check if sync is ready (network + account + not in low power mode)
+// Check if CloudKit sync is ready (network + account + not in low power mode)
 if status.isSyncReady {
-    // Safe to sync
+    // Safe to sync via CloudKit
+}
+
+// Check if iCloud Drive is ready (network + account + drive enabled + not in low power mode)
+if status.isCloudDriveReady {
+    // Safe to use iCloud Drive / Documents
 }
 
 // Check if suitable for large transfers (not constrained, not expensive)
@@ -166,6 +240,13 @@ if status.isSyncing {
 Task {
     for await status in syncManager.networkStatusStream {
         print("Network changed: \(status.isConnected)")
+    }
+}
+
+// Monitor iCloud Drive availability changes
+Task {
+    for await available in syncManager.cloudDriveStatusStream {
+        print("iCloud Drive: \(available ? "enabled" : "disabled")")
     }
 }
 
@@ -203,6 +284,7 @@ let networkStatus = syncManager.checkNetworkStatus()
 
 ```swift
 let syncManager = SyncStatusAsyncManager(
+    monitoringOptions: .all,
     cloudKitContainerID: "iCloud.com.yourcompany.yourapp",
     quotaExceededHandler: {
         // Notify the user about iCloud storage being full
@@ -215,6 +297,7 @@ let syncManager = SyncStatusAsyncManager(
 
 ```swift
 let syncManager = SyncStatusAsyncManager(
+    monitoringOptions: .all,
     cloudKitContainerID: "iCloud.com.yourcompany.yourapp",
     logger: YourLoggerInstance, // Conforming to LoggerManagerProtocol
     showEventInLog: true
@@ -238,6 +321,7 @@ testManager._testSetNetworkStatus(NetworkStatus(
 ))
 testManager._testSetAccountStatus(.available)
 testManager._testSetSyncEvent(.importing)
+testManager._testSetCloudDriveAvailable(true)
 #endif
 ```
 
@@ -320,6 +404,8 @@ let syncManager = SyncStatusManager(
 | Framework | Observation | Combine |
 | State Management | `@Observable` | `@Published` |
 | Network Monitoring | ✅ Detailed | ❌ Not included |
+| iCloud Drive Detection | ✅ Yes | ❌ No |
+| Selective Monitoring | ✅ MonitoringOptions | ❌ No |
 | Auto Account Monitoring | ✅ Automatic | ❌ Manual check |
 | AsyncStream Support | ✅ Yes | ❌ No |
 | iOS Minimum | 17.0 | 14.0 |

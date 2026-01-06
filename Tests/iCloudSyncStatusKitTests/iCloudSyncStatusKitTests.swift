@@ -372,6 +372,7 @@ struct SyncEventTests {
             #expect(manager.isNetworkConnected == false)
             #expect(manager.isAccountAvailable == false)
             #expect(manager.isSyncing == false)
+            #expect(manager.isCloudDriveAvailable == false)
 
             // Set to connected/available/syncing
             manager._testSetNetworkStatus(NetworkStatus(
@@ -383,10 +384,70 @@ struct SyncEventTests {
             ))
             manager._testSetAccountStatus(.available)
             manager._testSetSyncEvent(.exporting)
+            manager._testSetCloudDriveAvailable(true)
 
             #expect(manager.isNetworkConnected == true)
             #expect(manager.isAccountAvailable == true)
             #expect(manager.isSyncing == true)
+            #expect(manager.isCloudDriveAvailable == true)
+        }
+
+        @Test("Test set cloud drive status")
+        func setCloudDriveStatus() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            #expect(manager.isCloudDriveAvailable == false)
+
+            manager._testSetCloudDriveAvailable(true)
+
+            #expect(manager.isCloudDriveAvailable == true)
+
+            manager._testSetCloudDriveAvailable(false)
+
+            #expect(manager.isCloudDriveAvailable == false)
+        }
+
+        @Test("isCloudDriveReady when all conditions met")
+        func isCloudDriveReadyAllConditions() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetNetworkStatus(NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            ))
+            manager._testSetAccountStatus(.available)
+            manager._testSetCloudDriveAvailable(true)
+
+            #expect(manager.environmentStatus.isCloudDriveReady == true)
+        }
+
+        @Test("isCloudDriveReady false when drive unavailable")
+        func isCloudDriveReadyFalseWhenDriveUnavailable() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            manager._testSetNetworkStatus(NetworkStatus(
+                isConnected: true,
+                connectivity: .connected(.wifi),
+                isLowPowerModeEnabled: false,
+                isConstrained: false,
+                isExpensive: false,
+            ))
+            manager._testSetAccountStatus(.available)
+            manager._testSetCloudDriveAvailable(false)
+
+            #expect(manager.environmentStatus.isSyncReady == true)  // CloudKit sync ready
+            #expect(manager.environmentStatus.isCloudDriveReady == false)  // But Drive not ready
+        }
+
+        @Test("Monitoring options")
+        func monitoringOptions() async {
+            let manager = SyncStatusAsyncManager._forTesting()
+
+            // _forTesting uses .all by default
+            #expect(manager.monitoringOptions == .all)
         }
     }
 #endif
