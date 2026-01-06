@@ -117,137 +117,137 @@ struct SyncEventTests {
 // MARK: - SyncEnvironmentStatus Tests
 
 #if swift(>=6.2)
-@Suite("SyncEnvironmentStatus Tests")
-struct SyncEnvironmentStatusTests {
-    @Test("isSyncReady when all conditions met")
-    func isSyncReadyTrue() {
-        let status = SyncEnvironmentStatus(
-            network: NetworkStatus(
-                isConnected: true,
-                connectivity: .connected(.wifi),
-                isLowPowerModeEnabled: false,
-                isConstrained: false,
-                isExpensive: false,
-            ),
-            account: .available,
-            syncEvent: .idle,
-        )
+    @Suite("SyncEnvironmentStatus Tests")
+    struct SyncEnvironmentStatusTests {
+        @Test("isSyncReady when all conditions met")
+        func isSyncReadyTrue() {
+            let status = SyncEnvironmentStatus(
+                network: NetworkStatus(
+                    isConnected: true,
+                    connectivity: .connected(.wifi),
+                    isLowPowerModeEnabled: false,
+                    isConstrained: false,
+                    isExpensive: false,
+                ),
+                account: .available,
+                syncEvent: .idle,
+            )
 
-        #expect(status.isSyncReady == true)
+            #expect(status.isSyncReady == true)
+        }
+
+        @Test("isSyncReady false when network disconnected")
+        func isSyncReadyFalseNoNetwork() {
+            let status = SyncEnvironmentStatus(
+                network: .disconnected,
+                account: .available,
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSyncReady == false)
+        }
+
+        @Test("isSyncReady false when account unavailable")
+        func isSyncReadyFalseNoAccount() {
+            let status = SyncEnvironmentStatus(
+                network: NetworkStatus(
+                    isConnected: true,
+                    connectivity: .connected(.wifi),
+                    isLowPowerModeEnabled: false,
+                    isConstrained: false,
+                    isExpensive: false,
+                ),
+                account: .notAvailable(.noAccount),
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSyncReady == false)
+        }
+
+        @Test("isSyncReady false when low power mode enabled")
+        func isSyncReadyFalseLowPowerMode() {
+            let status = SyncEnvironmentStatus(
+                network: NetworkStatus(
+                    isConnected: true,
+                    connectivity: .connected(.wifi),
+                    isLowPowerModeEnabled: true,
+                    isConstrained: false,
+                    isExpensive: false,
+                ),
+                account: .available,
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSyncReady == false)
+        }
+
+        @Test("isSyncing when importing")
+        func isSyncingImporting() {
+            let status = SyncEnvironmentStatus(
+                network: .disconnected,
+                account: .available,
+                syncEvent: .importing,
+            )
+
+            #expect(status.isSyncing == true)
+        }
+
+        @Test("isSyncing when exporting")
+        func isSyncingExporting() {
+            let status = SyncEnvironmentStatus(
+                network: .disconnected,
+                account: .available,
+                syncEvent: .exporting,
+            )
+
+            #expect(status.isSyncing == true)
+        }
+
+        @Test("isSyncing false when idle")
+        func isSyncingFalseWhenIdle() {
+            let status = SyncEnvironmentStatus(
+                network: .disconnected,
+                account: .available,
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSyncing == false)
+        }
+
+        @Test("isSuitableForLargeTransfer when WiFi and not constrained")
+        func testIsSuitableForLargeTransfer() {
+            let status = SyncEnvironmentStatus(
+                network: NetworkStatus(
+                    isConnected: true,
+                    connectivity: .connected(.wifi),
+                    isLowPowerModeEnabled: false,
+                    isConstrained: false,
+                    isExpensive: false,
+                ),
+                account: .available,
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSuitableForLargeTransfer == true)
+        }
+
+        @Test("isSuitableForLargeTransfer false when expensive")
+        func isSuitableForLargeTransferFalseWhenExpensive() {
+            let status = SyncEnvironmentStatus(
+                network: NetworkStatus(
+                    isConnected: true,
+                    connectivity: .connected(.cellular),
+                    isLowPowerModeEnabled: false,
+                    isConstrained: false,
+                    isExpensive: true,
+                ),
+                account: .available,
+                syncEvent: .idle,
+            )
+
+            #expect(status.isSuitableForLargeTransfer == false)
+        }
     }
-
-    @Test("isSyncReady false when network disconnected")
-    func isSyncReadyFalseNoNetwork() {
-        let status = SyncEnvironmentStatus(
-            network: .disconnected,
-            account: .available,
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSyncReady == false)
-    }
-
-    @Test("isSyncReady false when account unavailable")
-    func isSyncReadyFalseNoAccount() {
-        let status = SyncEnvironmentStatus(
-            network: NetworkStatus(
-                isConnected: true,
-                connectivity: .connected(.wifi),
-                isLowPowerModeEnabled: false,
-                isConstrained: false,
-                isExpensive: false,
-            ),
-            account: .notAvailable(.noAccount),
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSyncReady == false)
-    }
-
-    @Test("isSyncReady false when low power mode enabled")
-    func isSyncReadyFalseLowPowerMode() {
-        let status = SyncEnvironmentStatus(
-            network: NetworkStatus(
-                isConnected: true,
-                connectivity: .connected(.wifi),
-                isLowPowerModeEnabled: true,
-                isConstrained: false,
-                isExpensive: false,
-            ),
-            account: .available,
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSyncReady == false)
-    }
-
-    @Test("isSyncing when importing")
-    func isSyncingImporting() {
-        let status = SyncEnvironmentStatus(
-            network: .disconnected,
-            account: .available,
-            syncEvent: .importing,
-        )
-
-        #expect(status.isSyncing == true)
-    }
-
-    @Test("isSyncing when exporting")
-    func isSyncingExporting() {
-        let status = SyncEnvironmentStatus(
-            network: .disconnected,
-            account: .available,
-            syncEvent: .exporting,
-        )
-
-        #expect(status.isSyncing == true)
-    }
-
-    @Test("isSyncing false when idle")
-    func isSyncingFalseWhenIdle() {
-        let status = SyncEnvironmentStatus(
-            network: .disconnected,
-            account: .available,
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSyncing == false)
-    }
-
-    @Test("isSuitableForLargeTransfer when WiFi and not constrained")
-    func testIsSuitableForLargeTransfer() {
-        let status = SyncEnvironmentStatus(
-            network: NetworkStatus(
-                isConnected: true,
-                connectivity: .connected(.wifi),
-                isLowPowerModeEnabled: false,
-                isConstrained: false,
-                isExpensive: false,
-            ),
-            account: .available,
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSuitableForLargeTransfer == true)
-    }
-
-    @Test("isSuitableForLargeTransfer false when expensive")
-    func isSuitableForLargeTransferFalseWhenExpensive() {
-        let status = SyncEnvironmentStatus(
-            network: NetworkStatus(
-                isConnected: true,
-                connectivity: .connected(.cellular),
-                isLowPowerModeEnabled: false,
-                isConstrained: false,
-                isExpensive: true,
-            ),
-            account: .available,
-            syncEvent: .idle,
-        )
-
-        #expect(status.isSuitableForLargeTransfer == false)
-    }
-}
 #endif // swift(>=6.2)
 
 // MARK: - SyncStatusAsyncManager Tests

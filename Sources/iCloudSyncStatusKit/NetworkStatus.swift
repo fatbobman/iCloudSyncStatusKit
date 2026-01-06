@@ -90,9 +90,14 @@ extension NetworkStatus {
     ///   - path: The network path to analyze
     ///   - isLowPowerModeEnabled: Whether Low Power Mode is enabled
     init(from path: NWPath, isLowPowerModeEnabled: Bool) {
-        let isConnected = path.status == .satisfied
+        let pathSatisfied = path.status == .satisfied
         let isConstrained = path.isConstrained
         let isExpensive = path.isExpensive
+
+        // Check for real physical network interfaces
+        // VPN-only connections (without underlying physical network) should be considered disconnected
+        let hasPhysicalInterface = Self.hasPhysicalNetworkInterface(path)
+        let isConnected = pathSatisfied && hasPhysicalInterface
 
         let connectivity: NetworkConnectivity
         if isConnected {
@@ -109,6 +114,31 @@ extension NetworkStatus {
             isConstrained: isConstrained,
             isExpensive: isExpensive,
         )
+    }
+
+    /// Checks if path has a real physical network interface (WiFi, Cellular, Ethernet)
+    /// This helps detect VPN-only connections where the underlying network is unavailable
+    private static func hasPhysicalNetworkInterface(_ path: NWPath) -> Bool {
+        // Check for standard physical interfaces
+        if path.usesInterfaceType(.wifi) ||
+            path.usesInterfaceType(.cellular) ||
+            path.usesInterfaceType(.wiredEthernet)
+        {
+            return true
+        }
+
+        // Also check availableInterfaces for physical types
+        // This handles cases where usesInterfaceType might miss some configurations
+        for interface in path.availableInterfaces {
+            switch interface.type {
+            case .wifi, .cellular, .wiredEthernet:
+                return true
+            default:
+                continue
+            }
+        }
+
+        return false
     }
 
     /// Determines the primary network interface from an NWPath

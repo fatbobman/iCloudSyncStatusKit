@@ -1,19 +1,22 @@
 # iCloudSyncStatusKit
 
-A Swift library that monitors the iCloud account status and responds to synchronization events when using Core Data with CloudKit. It leverages the new Observation framework in iOS 17 and macOS 14, with compatibility for older OS versions using `ObservableObject`.
+A Swift library that monitors iCloud account status, network connectivity, and synchronization events when using Core Data with CloudKit.
 
 ## Features
 
-- **Account Status Monitoring**: Check if the iCloud account is available and handle unavailable states.
-- **Synchronization Event Handling**: Monitor importing, exporting, setup, and idle states during data synchronization.
-- **Error Handling**: Handle specific CloudKit errors, such as `quotaExceeded`.
-- **Logging Support**: Optional logging of synchronization events for debugging purposes.
+- **Network Status Monitoring**: Real-time network connectivity detection with interface type (WiFi/Cellular/Ethernet)
+- **Account Status Monitoring**: Check if the iCloud account is available and handle unavailable states
+- **Synchronization Event Handling**: Monitor importing, exporting, setup, and idle states during data synchronization
+- **Error Handling**: Handle specific CloudKit errors, such as `quotaExceeded`
+- **Low Data Mode Detection**: Detect constrained and expensive network conditions
+- **Logging Support**: Optional logging of synchronization events for debugging purposes
 
 ## Requirements
 
-- **Swift** 6
-- **iOS** 14.0 or later
-- **macOS** 11 or later
+| API | Swift | iOS | macOS | watchOS | tvOS | visionOS |
+|-----|-------|-----|-------|---------|------|----------|
+| `SyncStatusAsyncManager` (Modern) | 6.2+ | 17.0+ | 14.0+ | 10.0+ | 17.0+ | 1.0+ |
+| `SyncStatusManager` (Legacy) | 6.0+ | 14.0+ | 11.0+ | - | - | - |
 
 ## Installation
 
@@ -23,7 +26,7 @@ Add the package to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fatbobman/iCloudSyncStatusKit.git", from: "0.1.0")
+    .package(url: "https://github.com/fatbobman/iCloudSyncStatusKit.git", from: "0.2.0")
 ]
 ```
 
@@ -33,7 +36,13 @@ Or add it via Xcode:
 2. Enter the repository URL: `https://github.com/fatbobman/iCloudSyncStatusKit.git`
 3. Choose the version and add the package to your project.
 
-## Usage
+---
+
+## Modern API (iOS 17+, Swift 6.2+)
+
+### SyncStatusAsyncManager
+
+The modern API uses the **Observation** framework and **async/await** for reactive state management.
 
 ### Import the Library
 
@@ -41,17 +50,212 @@ Or add it via Xcode:
 import iCloudSyncStatusKit
 ```
 
+### Initialize SyncStatusAsyncManager
+
+```swift
+@State private var syncManager = SyncStatusAsyncManager(
+    cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
+)
+```
+
+### Basic Usage with SwiftUI
+
+```swift
+struct ContentView: View {
+    @State private var syncManager = SyncStatusAsyncManager(
+        cloudKitContainerID: "iCloud.com.yourcompany.yourapp"
+    )
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Network Status
+            HStack {
+                Image(systemName: syncManager.isNetworkConnected ? "wifi" : "wifi.slash")
+                Text(syncManager.isNetworkConnected ? "Connected" : "Disconnected")
+            }
+
+            // Account Status
+            HStack {
+                Image(systemName: syncManager.isAccountAvailable ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.xmark")
+                Text(syncManager.isAccountAvailable ? "iCloud Available" : "iCloud Unavailable")
+            }
+
+            // Sync Status
+            if syncManager.isSyncing {
+                ProgressView("Syncing...")
+            }
+
+            // Comprehensive Status
+            if syncManager.environmentStatus.isSyncReady {
+                Text("✅ Ready to sync")
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+}
+```
+
+### Available Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `networkStatus` | `NetworkStatus` | Detailed network status including interface type |
+| `accountStatus` | `AccountStatus` | iCloud account availability status |
+| `syncEvent` | `SyncEvent` | Current sync event (importing/exporting/setup/idle) |
+| `environmentStatus` | `SyncEnvironmentStatus` | Combined status with convenience properties |
+| `isNetworkConnected` | `Bool` | Simple network connectivity check |
+| `isAccountAvailable` | `Bool` | Simple account availability check |
+| `isSyncing` | `Bool` | Whether sync is in progress |
+
+### NetworkStatus Details
+
+```swift
+// Check network interface type
+switch syncManager.networkStatus.connectivity {
+case .connected(.wifi):
+    print("Connected via WiFi")
+case .connected(.cellular):
+    print("Connected via Cellular")
+case .connected(.wiredEthernet):
+    print("Connected via Ethernet")
+case .disconnected:
+    print("No network connection")
+default:
+    break
+}
+
+// Check network conditions
+if syncManager.networkStatus.isConstrained {
+    print("Low Data Mode is enabled")
+}
+
+if syncManager.networkStatus.isExpensive {
+    print("Using expensive connection (cellular/hotspot)")
+}
+
+if syncManager.networkStatus.isLowPowerModeEnabled {
+    print("Low Power Mode is enabled")
+}
+```
+
+### SyncEnvironmentStatus
+
+```swift
+let status = syncManager.environmentStatus
+
+// Check if sync is ready (network + account + not in low power mode)
+if status.isSyncReady {
+    // Safe to sync
+}
+
+// Check if suitable for large transfers (not constrained, not expensive)
+if status.isSuitableForLargeTransfer {
+    // Good for syncing large files
+}
+
+// Check if currently syncing
+if status.isSyncing {
+    // Sync in progress
+}
+```
+
+### Using AsyncStream
+
+```swift
+// Monitor network status changes
+Task {
+    for await status in syncManager.networkStatusStream {
+        print("Network changed: \(status.isConnected)")
+    }
+}
+
+// Monitor all status changes in one stream
+Task {
+    for await envStatus in syncManager.environmentStatusStream {
+        if envStatus.isSyncReady {
+            print("Ready to sync!")
+        }
+    }
+}
+```
+
+### Wait Until Sync Ready
+
+```swift
+// Wait until sync conditions are met (with optional timeout)
+let isReady = await syncManager.waitUntilSyncReady(timeout: .seconds(30))
+if isReady {
+    // Proceed with sync operation
+}
+```
+
+### Manual Status Check
+
+```swift
+// Manually refresh account status
+let accountStatus = try await syncManager.checkAccountStatus()
+
+// Manually refresh network status
+let networkStatus = syncManager.checkNetworkStatus()
+```
+
+### Handling Quota Exceeded
+
+```swift
+let syncManager = SyncStatusAsyncManager(
+    cloudKitContainerID: "iCloud.com.yourcompany.yourapp",
+    quotaExceededHandler: {
+        // Notify the user about iCloud storage being full
+        print("iCloud storage is full!")
+    }
+)
+```
+
+### Logging
+
+```swift
+let syncManager = SyncStatusAsyncManager(
+    cloudKitContainerID: "iCloud.com.yourcompany.yourapp",
+    logger: YourLoggerInstance, // Conforming to LoggerManagerProtocol
+    showEventInLog: true
+)
+```
+
+### Testing Support
+
+```swift
+#if DEBUG
+// Create a manager for testing (no real monitoring)
+let testManager = SyncStatusAsyncManager._forTesting()
+
+// Set states directly for testing
+testManager._testSetNetworkStatus(NetworkStatus(
+    isConnected: true,
+    connectivity: .connected(.wifi),
+    isLowPowerModeEnabled: false,
+    isConstrained: false,
+    isExpensive: false
+))
+testManager._testSetAccountStatus(.available)
+testManager._testSetSyncEvent(.importing)
+#endif
+```
+
+---
+
+## Legacy API (iOS 14+)
+
+### SyncStatusManager
+
+The legacy API uses **Combine** and `@Published` for compatibility with older iOS versions.
+
 ### Initialize SyncStatusManager
 
 ```swift
 @StateObject var syncManager = SyncStatusManager()
 ```
 
-### Observing Sync Events
-
-You can observe `syncEvent` to monitor the synchronization status.
-
-#### SwiftUI View Example
+### Basic Usage
 
 ```swift
 struct ContentView: View {
@@ -60,7 +264,7 @@ struct ContentView: View {
     var body: some View {
         VStack {
             Text("Sync Event: \(syncManager.syncEvent)")
-            // Your UI components
+            
             Button("Check iCloud Status") {
                 Task {
                     let status = await syncManager.validateICloudAvailability { status, error in
@@ -81,8 +285,6 @@ struct ContentView: View {
 
 ### Checking iCloud Availability
 
-Use the `validateICloudAvailability` method to check the iCloud account status:
-
 ```swift
 Task {
     let status = await syncManager.validateICloudAvailability { status, error in
@@ -101,8 +303,6 @@ Task {
 
 ### Handling Quota Exceeded
 
-Provide a `quotaExceededHandler` when initializing `SyncStatusManager`:
-
 ```swift
 let syncManager = SyncStatusManager(
     quotaExceededHandler: {
@@ -111,16 +311,19 @@ let syncManager = SyncStatusManager(
 )
 ```
 
-### Logging Synchronization Events
+---
 
-If you want to log synchronization events for debugging purposes, set `showEventInLog` to `true` and provide a logger that conforms to `LoggerManagerProtocol`:
+## API Comparison
 
-```swift
-let syncManager = SyncStatusManager(
-    logger: YourLoggerInstance, // Conforming to LoggerManagerProtocol
-    showEventInLog: true
-)
-```
+| Feature | `SyncStatusAsyncManager` | `SyncStatusManager` |
+|---------|--------------------------|---------------------|
+| Framework | Observation | Combine |
+| State Management | `@Observable` | `@Published` |
+| Network Monitoring | ✅ Detailed | ❌ Not included |
+| Auto Account Monitoring | ✅ Automatic | ❌ Manual check |
+| AsyncStream Support | ✅ Yes | ❌ No |
+| iOS Minimum | 17.0 | 14.0 |
+| Swift Minimum | 6.2 | 6.0 |
 
 ## License
 
